@@ -1,0 +1,571 @@
+--- free source since i dont even play rivals
+if not game:IsLoaded() then game.Loaded:Wait() end
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local HttpService = game:GetService("HttpService")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+
+local _allUnlocked = false
+
+local _stbl
+_stbl = hookfunction(getrenv().setmetatable, newcclosure(function(tbl, mt)
+    if mt and typeof(mt) == "table" and rawget(mt, "__mode") == "kv" then
+        local tr = debug.traceback()
+        if tr:find("MiscellaneousController") then
+            return _stbl({1,2,3}, {})
+        end
+    end
+    return _stbl(tbl, mt)
+end))
+
+coroutine.wrap(function()
+    pcall(function()
+        local function _proc(o)
+            pcall(function()
+                if o:IsA("LocalScript") or o:IsA("ModuleScript") then
+                    local _s, nm = pcall(function() return o.Name:lower() end)
+                    if not _s or not nm then return end
+                    local _tags = {"anticheat","ac","detection","ban","kick","security","moderation"}
+                    for _i = 1, #_tags do
+                        if nm:find(_tags[_i]) then
+                            pcall(function() o.Disabled = true end)
+                            break
+                        end
+                    end
+                end
+            end)
+        end
+        pcall(function()
+            local _desc = game:GetDescendants()
+            for _i = 1, #_desc do _proc(_desc[_i]) end
+        end)
+        pcall(function() game.DescendantAdded:Connect(_proc) end)
+    end)
+    pcall(function()
+        local _nc = game:GetService("NetworkClient")
+        if not _nc then return end
+        _nc.ChildAdded:Connect(function(ch)
+            pcall(function()
+                local _ok, _n = pcall(function() return ch.Name:lower() end)
+                if _ok and _n then
+                    if _n:find("anticheat") or _n:find("detection") then
+                        pcall(function() ch:Destroy() end)
+                    end
+                end
+            end)
+        end)
+    end)
+end)()
+
+local _fakeEv
+pcall(function()
+    _fakeEv = Instance.new("RemoteEvent")
+    _fakeEv.Name = "ClientAlert"
+    _fakeEv.Parent = LocalPlayer
+end)
+
+pcall(function()
+    local _rf = game:GetService("ReplicatedFirst")
+    local _tgt = _rf:WaitForChild("LocalScript3", 10)
+    local _ct = 0
+    local _gc = getgc(false)
+    for _i = 1, #_gc do
+        local _fn = _gc[_i]
+        if type(_fn) ~= "function" then
+        else
+            local _ok1, _env = pcall(getfenv, _fn)
+            if _ok1 and type(_env) == "table" then
+                local _ok2, _scr = pcall(function() return rawget(_env, "script") end)
+                if _ok2 and _scr and typeof(_scr) == "Instance" then
+                    local _ok3, _ss = pcall(tostring, _scr)
+                    if _ok3 then
+                        if _scr == _tgt or (type(_ss) == "string" and _ss:find("LoadingScreen")) then
+                            local _ok4, _consts = pcall(debug.getconstants, _fn)
+                            if _ok4 and type(_consts) == "table" then
+                                for _j = 1, #_consts do
+                                    local _c = _consts[_j]
+                                    if type(_c) == "string" and (_c:find("TakeTheL") or _c:find("ban") or _c:find("kick")) then
+                                        pcall(function()
+                                            hookfunction(_fn, function() end)
+                                            _ct = _ct + 1
+                                        end)
+                                        break
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+task.wait(4)
+
+local _pscripts = LocalPlayer.PlayerScripts
+local _ctrl = _pscripts.Controllers
+local _mods = ReplicatedStorage:WaitForChild("Modules", 10)
+
+local _enumLib = require(_mods:WaitForChild("EnumLibrary", 10))
+if _enumLib then pcall(function() _enumLib:WaitForEnumBuilder() end) end
+
+local _cosLib = require(_mods:WaitForChild("CosmeticLibrary", 10))
+local _itmLib = require(_mods:WaitForChild("ItemLibrary", 10))
+local _datCtrl = require(_ctrl:WaitForChild("PlayerDataController", 10))
+
+local _eq = {}
+local _buildingWep = nil
+local _lastWep = nil
+
+local function _mkCosmetic(nm, ctype, opts)
+    local _base = _cosLib.Cosmetics[nm]
+    if not _base then return nil end
+    local _d = {}
+    for k, v in pairs(_base) do _d[k] = v end
+    _d.Name = nm
+    _d.Type = _d.Type or ctype
+    _d.Seed = _d.Seed or math.random(1, 1000000)
+    if _enumLib then
+        local _s, _eid = pcall(_enumLib.ToEnum, _enumLib, nm)
+        if _s and _eid then
+            _d.Enum = _eid
+            _d.ObjectID = _d.ObjectID or _eid
+        end
+    end
+    if opts then
+        if opts.inverted ~= nil then _d.Inverted = opts.inverted end
+        if opts.favoritesOnly ~= nil then _d.OnlyUseFavorites = opts.favoritesOnly end
+    end
+    return _d
+end
+
+local _cosTypes = {"Skin","Wrap","Charm","Dance","Emote"}
+
+local function _isCosType(cosObj)
+    if not cosObj then return false end
+    for _, t in ipairs(_cosTypes) do
+        if cosObj.Type == t then return true end
+    end
+    return false
+end
+
+_cosLib.OwnsCosmeticNormally = function(self, inv, nm, wep)
+    if not _allUnlocked then return false end
+    local c = _cosLib.Cosmetics[nm]
+    if c and c.Type == "Skin" then return true end
+    return false
+end
+
+_cosLib.OwnsCosmeticUniversally = function(self, inv, nm, wep)
+    if not _allUnlocked then return false end
+    local c = _cosLib.Cosmetics[nm]
+    if c and c.Type == "Skin" then return true end
+    return false
+end
+
+_cosLib.OwnsCosmeticForWeapon = function(self, inv, nm, wep)
+    if not _allUnlocked then return false end
+    local c = _cosLib.Cosmetics[nm]
+    if c and c.Type == "Skin" then return true end
+    return false
+end
+
+local _origOwns = _cosLib.OwnsCosmetic
+
+_cosLib.OwnsCosmetic = function(self, inv, nm, wep)
+    if not _allUnlocked then
+        return _origOwns(self, inv, nm, wep)
+    end
+    if nm:find("MISSING_") or nm == "Bubble Gun" then
+        return _origOwns(self, inv, nm, wep)
+    end
+    local c = _cosLib.Cosmetics[nm]
+    if c and _isCosType(c) then return true end
+    return _origOwns(self, inv, nm, wep)
+end
+
+local _origGet = _datCtrl.Get
+
+_datCtrl.Get = function(self, key)
+    local _val = _origGet(self, key)
+    if key == "CosmeticInventory" and _allUnlocked then
+        local _prx = {}
+        if _val then
+            for k, v in pairs(_val) do
+                local c = _cosLib.Cosmetics[k]
+                if c and _isCosType(c) then _prx[k] = v end
+            end
+        end
+        return setmetatable(_prx, {
+            __index = function(t, k)
+                local c = _cosLib.Cosmetics[k]
+                if c and _isCosType(c) then return true end
+                return nil
+            end
+        })
+    end
+    return _val
+end
+
+local _origGetWep = _datCtrl.GetWeaponData
+
+_datCtrl.GetWeaponData = function(self, wn)
+    local _d = _origGetWep(self, wn)
+    if not _d then return nil end
+    local _m = {}
+    for k, v in pairs(_d) do _m[k] = v end
+    _m.Name = wn
+    if _allUnlocked and _eq[wn] then
+        for ct, cd in pairs(_eq[wn]) do
+            _m[ct] = cd
+        end
+    end
+    return _m
+end
+
+local _fightCtrl
+
+pcall(function()
+    _fightCtrl = require(_ctrl:WaitForChild("FighterController", 10))
+end)
+
+if hookmetamethod then
+    local _remotes = ReplicatedStorage:FindFirstChild("Remotes")
+    local _dataRem = _remotes and _remotes:FindFirstChild("Data")
+    local _equipRem = _dataRem and _dataRem:FindFirstChild("EquipCosmetic")
+    local _repRem = _remotes and _remotes:FindFirstChild("Replication")
+    local _fightRem = _repRem and _repRem:FindFirstChild("Fighter")
+    local _useItmRem = _fightRem and _fightRem:FindFirstChild("UseItem")
+
+    if _equipRem then
+        local _onc
+        _onc = hookmetamethod(game, "__namecall", function(self, ...)
+            if getnamecallmethod() ~= "FireServer" then
+                return _onc(self, ...)
+            end
+            local _a = {...}
+
+            if _useItmRem and self == _useItmRem then
+                local _oid = _a[1]
+                if _fightCtrl then
+                    pcall(function()
+                        local _f = _fightCtrl:GetFighter(LocalPlayer)
+                        if _f and _f.Items then
+                            for _, itm in pairs(_f.Items) do
+                                if itm:Get("ObjectID") == _oid then
+                                    _lastWep = itm.Name
+                                    break
+                                end
+                            end
+                        end
+                    end)
+                end
+            end
+
+            if self == _equipRem and _allUnlocked then
+                local _wn = _a[1]
+                local _ct = _a[2]
+                local _cn = _a[3]
+                local _opts = _a[4] or {}
+
+                _eq[_wn] = _eq[_wn] or {}
+                if not _cn or _cn == "None" or _cn == "" then
+                    _eq[_wn][_ct] = nil
+                    if not next(_eq[_wn]) then _eq[_wn] = nil end
+                else
+                    local _cloned = _mkCosmetic(_cn, _ct, {
+                        inverted = _opts.IsInverted,
+                        favoritesOnly = _opts.OnlyUseFavorites
+                    })
+                    if _cloned then _eq[_wn][_ct] = _cloned end
+                end
+                task.defer(function()
+                    pcall(function() _datCtrl.CurrentData:Replicate("WeaponInventory") end)
+                end)
+                return
+            end
+
+            return _onc(self, ...)
+        end)
+    end
+end
+
+local _cliItem
+
+pcall(function()
+    _cliItem = require(LocalPlayer.PlayerScripts.Modules.ClientReplicatedClasses.ClientFighter.ClientItem)
+end)
+
+if _cliItem and _cliItem._CreateViewModel then
+    local _origCVM = _cliItem._CreateViewModel
+
+    _cliItem._CreateViewModel = function(self, vmRef)
+        local _wn = self.Name
+        local _wp = self.ClientFighter and self.ClientFighter.Player
+        _buildingWep = (_wp == LocalPlayer) and _wn or nil
+
+        if _allUnlocked and _wp == LocalPlayer and _eq[_wn] then
+            local _dk = self:ToEnum("Data")
+            if vmRef[_dk] then
+                if _eq[_wn].Skin then
+                    vmRef[_dk][self:ToEnum("Skin")] = _eq[_wn].Skin
+                    vmRef[_dk][self:ToEnum("Name")] = _eq[_wn].Skin.Name
+                end
+                if _eq[_wn].Charm then vmRef[_dk][self:ToEnum("Charm")] = _eq[_wn].Charm end
+                if _eq[_wn].Wrap then vmRef[_dk][self:ToEnum("Wrap")] = _eq[_wn].Wrap end
+            elseif vmRef.Data then
+                if _eq[_wn].Skin then
+                    vmRef.Data.Skin = _eq[_wn].Skin
+                    vmRef.Data.Name = _eq[_wn].Skin.Name
+                end
+                if _eq[_wn].Charm then vmRef.Data.Charm = _eq[_wn].Charm end
+                if _eq[_wn].Wrap then vmRef.Data.Wrap = _eq[_wn].Wrap end
+            end
+        end
+
+        local _r = _origCVM(self, vmRef)
+        _buildingWep = nil
+        return _r
+    end
+end
+
+local _vmMod = LocalPlayer.PlayerScripts.Modules.ClientReplicatedClasses.ClientFighter.ClientItem:FindFirstChild("ClientViewModel")
+
+if _vmMod then
+    local _CVM = require(_vmMod)
+    local _origNew = _CVM.new
+
+    _CVM.new = function(repData, cliItm)
+        local _wp = cliItm.ClientFighter and cliItm.ClientFighter.Player
+        local _wn = _buildingWep or cliItm.Name
+
+        if _allUnlocked and _wp == LocalPlayer and _eq[_wn] then
+            local _RC = require(ReplicatedStorage.Modules.ReplicatedClass)
+            local _dk = _RC:ToEnum("Data")
+            repData[_dk] = repData[_dk] or {}
+            local _cos = _eq[_wn]
+            if _cos.Skin then repData[_dk][_RC:ToEnum("Skin")] = _cos.Skin end
+            if _cos.Charm then repData[_dk][_RC:ToEnum("Charm")] = _cos.Charm end
+            if _cos.Wrap then repData[_dk][_RC:ToEnum("Wrap")] = _cos.Wrap end
+        end
+
+        return _origNew(repData, cliItm)
+    end
+end
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "ShopifySkinAccess"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.IgnoreGuiInset = true
+ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+local function Corner(parent, radius)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, radius or 10)
+    c.Parent = parent
+    return c
+end
+
+local function Stroke(parent, color, thickness)
+    local s = Instance.new("UIStroke")
+    s.Color = color or Color3.fromRGB(0, 255, 100)
+    s.Thickness = thickness or 2
+    s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    s.Parent = parent
+    return s
+end
+
+local function Label(parent, text, size, color, font)
+    local l = Instance.new("TextLabel")
+    l.Text = text or ""
+    l.TextSize = size or 12
+    l.TextColor3 = color or Color3.fromRGB(20, 20, 20)
+    l.Font = font or Enum.Font.Gotham
+    l.BackgroundTransparency = 1
+    l.TextXAlignment = Enum.TextXAlignment.Left
+    l.Parent = parent
+    return l
+end
+
+local PhoneFrame = Instance.new("Frame")
+PhoneFrame.Size = UDim2.new(0, 200, 0, 220)
+PhoneFrame.Position = UDim2.new(0, -210, 0.5, -110)
+PhoneFrame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+PhoneFrame.BackgroundTransparency = 0.03
+PhoneFrame.BorderSizePixel = 0
+PhoneFrame.ZIndex = 10
+PhoneFrame.Parent = ScreenGui
+Corner(PhoneFrame, 14)
+Stroke(PhoneFrame, Color3.fromRGB(0, 255, 100), 2)
+
+local CloseButton = Instance.new("TextButton")
+CloseButton.Size = UDim2.new(0, 18, 0, 18)
+CloseButton.Position = UDim2.new(1, -22, 0, 3)
+CloseButton.BackgroundColor3 = Color3.fromRGB(220, 60, 60)
+CloseButton.BorderSizePixel = 0
+CloseButton.Text = "X"
+CloseButton.TextSize = 9
+CloseButton.Font = Enum.Font.GothamBold
+CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseButton.AutoButtonColor = false
+CloseButton.ZIndex = 20
+CloseButton.Parent = PhoneFrame
+Corner(CloseButton, 9)
+
+local BrandLabel = Label(PhoneFrame, "Shopify (Skin Access)", 10, Color3.fromRGB(20, 20, 20), Enum.Font.GothamBold)
+BrandLabel.Size = UDim2.new(1, 0, 0, 12)
+BrandLabel.Position = UDim2.new(0, 0, 0, 24)
+BrandLabel.TextXAlignment = Enum.TextXAlignment.Center
+BrandLabel.ZIndex = 12
+
+local UnlockButton = Instance.new("TextButton")
+UnlockButton.Size = UDim2.new(1, -30, 0, 70)
+UnlockButton.Position = UDim2.new(0, 15, 0, 50)
+UnlockButton.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+UnlockButton.BackgroundTransparency = 0.05
+UnlockButton.BorderSizePixel = 0
+UnlockButton.Text = ""
+UnlockButton.AutoButtonColor = false
+UnlockButton.ZIndex = 13
+UnlockButton.Parent = PhoneFrame
+Corner(UnlockButton, 12)
+Stroke(UnlockButton, Color3.fromRGB(0, 255, 100), 2)
+
+local UnlockIcon = Label(UnlockButton, "🔒", 24, Color3.fromRGB(20, 20, 20), Enum.Font.GothamBold)
+UnlockIcon.Size = UDim2.new(1, 0, 0, 30)
+UnlockIcon.Position = UDim2.new(0, 0, 0, 12)
+UnlockIcon.TextXAlignment = Enum.TextXAlignment.Center
+UnlockIcon.ZIndex = 14
+
+local UnlockStatus = Label(UnlockButton, "UNLOCK ALL", 8, Color3.fromRGB(20, 20, 20), Enum.Font.GothamBold)
+UnlockStatus.Size = UDim2.new(1, 0, 0, 12)
+UnlockStatus.Position = UDim2.new(0, 0, 0, 46)
+UnlockStatus.TextXAlignment = Enum.TextXAlignment.Center
+UnlockStatus.ZIndex = 14
+
+local DiscordLabel = Label(PhoneFrame, "discord.gg/VmyM8Jt9Yx", 7, Color3.fromRGB(100, 100, 100), Enum.Font.GothamMedium)
+DiscordLabel.Size = UDim2.new(1, 0, 0, 9)
+DiscordLabel.Position = UDim2.new(0, 0, 0, 135)
+DiscordLabel.TextXAlignment = Enum.TextXAlignment.Center
+DiscordLabel.ZIndex = 12
+
+local HomeIndicator = Instance.new("Frame")
+HomeIndicator.Size = UDim2.new(0, 45, 0, 3)
+HomeIndicator.Position = UDim2.new(0.5, -22, 1, -5)
+HomeIndicator.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+HomeIndicator.BackgroundTransparency = 0.3
+HomeIndicator.BorderSizePixel = 0
+HomeIndicator.ZIndex = 11
+HomeIndicator.Parent = PhoneFrame
+Corner(HomeIndicator, 1)
+
+local SwipeTab = Instance.new("TextButton")
+SwipeTab.Size = UDim2.new(0, 10, 0, 45)
+SwipeTab.Position = UDim2.new(0, 0, 0.30, -22)
+SwipeTab.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+SwipeTab.BackgroundTransparency = 0.3
+SwipeTab.BorderSizePixel = 0
+SwipeTab.Text = ""
+SwipeTab.AutoButtonColor = false
+SwipeTab.ZIndex = 5
+SwipeTab.Parent = ScreenGui
+Corner(SwipeTab, 5)
+
+local SwipeArrow = Label(SwipeTab, ">", 9, Color3.fromRGB(20, 20, 20), Enum.Font.GothamBold)
+SwipeArrow.Size = UDim2.new(1, 0, 0, 12)
+SwipeArrow.Position = UDim2.new(0, 0, 0.5, -6)
+SwipeArrow.TextXAlignment = Enum.TextXAlignment.Center
+SwipeArrow.ZIndex = 6
+
+local isOpen = false
+local isDragging = false
+local dragStart = nil
+local startX = nil
+
+local function OpenPhone()
+    isOpen = true
+    TweenService:Create(PhoneFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+        Position = UDim2.new(0, 5, 0.5, -110)
+    }):Play()
+    TweenService:Create(SwipeTab, TweenInfo.new(0.3), {
+        BackgroundTransparency = 1
+    }):Play()
+end
+
+local function ClosePhone()
+    isOpen = false
+    TweenService:Create(PhoneFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {
+        Position = UDim2.new(0, -210, 0.5, -110)
+    }):Play()
+    TweenService:Create(SwipeTab, TweenInfo.new(0.3), {
+        BackgroundTransparency = 0.3
+    }):Play()
+end
+
+CloseButton.MouseButton1Click:Connect(ClosePhone)
+
+SwipeTab.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        isDragging = true
+        dragStart = input.Position
+        startX = PhoneFrame.Position.X.Offset
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if isDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position.X - dragStart.X
+        local newX = startX + delta
+        newX = math.clamp(newX, -210, 5)
+        PhoneFrame.Position = UDim2.new(0, newX, 0.5, -110)
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        if isDragging then
+            isDragging = false
+            local currentX = PhoneFrame.Position.X.Offset
+            if currentX > -105 then
+                OpenPhone()
+            else
+                ClosePhone()
+            end
+        end
+    end
+end)
+
+SwipeTab.MouseButton1Click:Connect(function()
+    if not isOpen then
+        OpenPhone()
+    end
+end)
+
+UnlockButton.MouseButton1Click:Connect(function()
+    _allUnlocked = not _allUnlocked
+
+    if _allUnlocked then
+        UnlockButton.BackgroundColor3 = Color3.fromRGB(0, 255, 100)
+        UnlockButton.BackgroundTransparency = 0.05
+        UnlockIcon.Text = "🔓"
+        UnlockStatus.Text = "UNLOCKED"
+    else
+        UnlockButton.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+        UnlockButton.BackgroundTransparency = 0.05
+        UnlockIcon.Text = "🔒"
+        UnlockStatus.Text = "UNLOCK ALL"
+    end
+end)
+
+task.spawn(function()
+    task.wait(1)
+    OpenPhone()
+end)
+-- dont skidding like a good boy just execute it 
